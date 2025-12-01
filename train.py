@@ -229,9 +229,12 @@ class Trainer:
         print(f"Device: {self.device}")
         print(f"{'='*60}\n")
 
-        for iteration in range(self.iteration, self.iteration + num_iterations):
+        start_iteration = self.iteration
+        end_iteration = start_iteration + num_iterations
+
+        for iteration in range(start_iteration, end_iteration):
             self.iteration = iteration
-            print(f"\n--- Iteration {iteration + 1}/{self.iteration + num_iterations} ---")
+            print(f"\n--- Iteration {iteration + 1}/{end_iteration} ---")
 
             # Generate self-play data
             num_new_examples = self.generate_self_play_data(games_per_iteration)
