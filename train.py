@@ -18,6 +18,12 @@ except ImportError:
 from network import AlphaZeroNetwork, AlphaZeroLoss
 from mcts import MCTS
 from self_play import SelfPlay, ReplayBuffer
+try:
+    from parallel_compiled import CompiledParallelMCTS as ParallelMCTS
+    USING_COMPILED = True
+except ImportError:
+    from parallel_self_play import ParallelMCTS
+    USING_COMPILED = False
 
 
 class Trainer:
@@ -32,6 +38,7 @@ class Trainer:
         num_res_blocks: int = 10,
         mcts_simulations: int = 800,
         mcts_batch_size: int = 16,
+        parallel_games: int = 16,
         c_puct: float = 1.5,
         lr: float = 0.001,
         weight_decay: float = 1e-4,
@@ -50,6 +57,7 @@ class Trainer:
             num_res_blocks: Number of residual blocks
             mcts_simulations: MCTS simulations per move
             mcts_batch_size: Batch size for MCTS leaf evaluation
+            parallel_games: Number of games to play in parallel
             c_puct: Exploration constant for MCTS
             lr: Learning rate
             weight_decay: L2 regularization
@@ -62,6 +70,7 @@ class Trainer:
         self.board_size = board_size
         self.mcts_simulations = mcts_simulations
         self.mcts_batch_size = mcts_batch_size
+        self.parallel_games = parallel_games
         self.c_puct = c_puct
         self.batch_size = batch_size
         self.checkpoint_dir = checkpoint_dir
@@ -115,12 +124,22 @@ class Trainer:
         # Replay buffer
         self.replay_buffer = ReplayBuffer(max_size=buffer_size)
 
-        # Self-play generator
+        # Self-play generator (legacy, for single game)
         self.self_play = SelfPlay(
             network=self.network,
             game=self.game,
             mcts_simulations=mcts_simulations,
             mcts_batch_size=mcts_batch_size,
+            c_puct=c_puct,
+            device=self.device,
+        )
+
+        # Parallel self-play generator
+        self.parallel_mcts = ParallelMCTS(
+            network=self.network,
+            num_games=parallel_games,
+            num_simulations=mcts_simulations,
+            batch_size=mcts_batch_size * parallel_games,
             c_puct=c_puct,
             device=self.device,
         )
@@ -134,7 +153,7 @@ class Trainer:
 
     def generate_self_play_data(self, num_games: int) -> int:
         """
-        Generate self-play games and add to replay buffer.
+        Generate self-play games and add to replay buffer using parallel self-play.
 
         Args:
             num_games: Number of games to generate
@@ -145,9 +164,22 @@ class Trainer:
         self.network.eval()
 
         all_records = []
-        for _ in tqdm(range(num_games), desc="Self-play"):
-            records = self.self_play.play_game(use_augmentation=True)
-            all_records.extend(records)
+        games_played = 0
+
+        # Play games in parallel batches
+        with tqdm(total=num_games, desc="Self-play") as pbar:
+            while games_played < num_games:
+                # Adjust parallel games for last batch
+                batch_games = min(self.parallel_games, num_games - games_played)
+                self.parallel_mcts.num_games = batch_games
+
+                records = self.parallel_mcts.play_games(
+                    board_size=self.board_size,
+                    use_augmentation=True
+                )
+                all_records.extend(records)
+                games_played += batch_games
+                pbar.update(batch_games)
 
         self.replay_buffer.push(all_records)
         return len(all_records)
@@ -227,6 +259,8 @@ class Trainer:
         print(f"Board size: {self.board_size}x{self.board_size}")
         print(f"Network parameters: {sum(p.numel() for p in self.network.parameters()):,}")
         print(f"Device: {self.device}")
+        print(f"Parallel games: {self.parallel_games}")
+        print(f"MCTS: {'Compiled (Numba)' if USING_COMPILED else 'Standard'}")
         print(f"{'='*60}\n")
 
         start_iteration = self.iteration
@@ -356,6 +390,7 @@ if __name__ == '__main__':
     parser.add_argument('--batches-per-iter', type=int, default=100, help='Training batches per iteration')
     parser.add_argument('--mcts-sims', type=int, default=400, help='MCTS simulations per move')
     parser.add_argument('--mcts-batch', type=int, default=16, help='MCTS batch size for leaf evaluation')
+    parser.add_argument('--parallel-games', type=int, default=16, help='Number of games to play in parallel')
     parser.add_argument('--num-channels', type=int, default=128, help='Network channels')
     parser.add_argument('--num-res-blocks', type=int, default=10, help='Residual blocks')
     parser.add_argument('--batch-size', type=int, default=256, help='Training batch size')
@@ -373,6 +408,7 @@ if __name__ == '__main__':
         num_res_blocks=args.num_res_blocks,
         mcts_simulations=args.mcts_sims,
         mcts_batch_size=args.mcts_batch,
+        parallel_games=args.parallel_games,
         lr=args.lr,
         batch_size=args.batch_size,
         checkpoint_dir=args.checkpoint_dir,
