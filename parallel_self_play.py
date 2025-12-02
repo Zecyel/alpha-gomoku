@@ -16,7 +16,7 @@ except ImportError:
 @dataclass
 class GameState:
     """State of a single game in parallel self-play."""
-    game: GomokuGame
+    game: 'GomokuGame'
     history: List[Tuple[np.ndarray, np.ndarray, int]]  # (state, policy, player)
     move_count: int
     done: bool
@@ -78,7 +78,7 @@ class ParallelMCTS:
 
         return [policies_np[i] for i in range(len(states))], values_np.tolist()
 
-    def _run_mcts_batched(self, games: List[GomokuGame], add_noise: bool = True) -> List[np.ndarray]:
+    def _run_mcts_batched(self, games: List['GomokuGame'], add_noise: bool = True) -> List[np.ndarray]:
         """Run MCTS for multiple games with batched evaluation."""
         from mcts_batched import MCTSNode
 

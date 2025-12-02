@@ -18,14 +18,14 @@ from mcts import MCTS
 class GomokuPlayer:
     """Base class for Gomoku players."""
 
-    def get_action(self, game: GomokuGame) -> int:
+    def get_action(self, game: 'GomokuGame') -> int:
         raise NotImplementedError
 
 
 class HumanPlayer(GomokuPlayer):
     """Human player via command line input."""
 
-    def get_action(self, game: GomokuGame) -> int:
+    def get_action(self, game: 'GomokuGame') -> int:
         while True:
             try:
                 user_input = input("Enter move (row col): ").strip()
@@ -64,7 +64,7 @@ class AIPlayer(GomokuPlayer):
         )
         self.device = device
 
-    def get_action(self, game: GomokuGame) -> int:
+    def get_action(self, game: 'GomokuGame') -> int:
         action, policy = self.mcts.select_action(
             game,
             temperature=0,  # Deterministic play
@@ -84,7 +84,7 @@ class AIPlayer(GomokuPlayer):
 class RandomPlayer(GomokuPlayer):
     """Random player for testing."""
 
-    def get_action(self, game: GomokuGame) -> int:
+    def get_action(self, game: 'GomokuGame') -> int:
         valid_moves = game.get_valid_moves_list()
         return np.random.choice(valid_moves)
 

@@ -23,7 +23,7 @@ from mcts_compiled import (
 @dataclass
 class GameState:
     """State of a single game."""
-    game: GomokuGame
+    game: 'GomokuGame'
     history: List[Tuple[np.ndarray, np.ndarray, int]]
     move_count: int
     done: bool
